@@ -1,11 +1,18 @@
 package com.shelfiq.common.config;
 
+import com.shelfiq.inventory.repository.InventoryMovementRepository;
+import com.shelfiq.inventory.repository.InventoryRepository;
+import com.shelfiq.product.repository.ProductRepository;
 import com.shelfiq.product.service.CategoryService;
+import com.shelfiq.purchase.repository.PurchaseOrderRepository;
+import com.shelfiq.sales.repository.SaleItemRepository;
+import com.shelfiq.sales.repository.SaleTransactionRepository;
 import com.shelfiq.store.entity.Store;
 import com.shelfiq.store.entity.StoreEmployee;
 import com.shelfiq.store.entity.StoreLocation;
 import com.shelfiq.store.repository.StoreEmployeeRepository;
 import com.shelfiq.store.repository.StoreRepository;
+import com.shelfiq.supplier.repository.SupplierRepository;
 import com.shelfiq.user.entity.Role;
 import com.shelfiq.user.entity.User;
 import com.shelfiq.user.repository.RoleRepository;
@@ -30,6 +37,13 @@ public class DataInitializer implements CommandLineRunner {
     private final StoreEmployeeRepository storeEmployeeRepository;
     private final CategoryService categoryService;
     private final PasswordEncoder passwordEncoder;
+    private final ProductRepository productRepository;
+    private final InventoryRepository inventoryRepository;
+    private final InventoryMovementRepository inventoryMovementRepository;
+    private final SaleTransactionRepository saleTransactionRepository;
+    private final SaleItemRepository saleItemRepository;
+    private final PurchaseOrderRepository purchaseOrderRepository;
+    private final SupplierRepository supplierRepository;
 
     public DataInitializer(
             RoleRepository roleRepository,
@@ -37,21 +51,44 @@ public class DataInitializer implements CommandLineRunner {
             StoreRepository storeRepository,
             StoreEmployeeRepository storeEmployeeRepository,
             CategoryService categoryService,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            ProductRepository productRepository,
+            InventoryRepository inventoryRepository,
+            InventoryMovementRepository inventoryMovementRepository,
+            SaleTransactionRepository saleTransactionRepository,
+            SaleItemRepository saleItemRepository,
+            PurchaseOrderRepository purchaseOrderRepository,
+            SupplierRepository supplierRepository) {
         this.roleRepository = roleRepository;
         this.userRepository = userRepository;
         this.storeRepository = storeRepository;
         this.storeEmployeeRepository = storeEmployeeRepository;
         this.categoryService = categoryService;
         this.passwordEncoder = passwordEncoder;
+        this.productRepository = productRepository;
+        this.inventoryRepository = inventoryRepository;
+        this.inventoryMovementRepository = inventoryMovementRepository;
+        this.saleTransactionRepository = saleTransactionRepository;
+        this.saleItemRepository = saleItemRepository;
+        this.purchaseOrderRepository = purchaseOrderRepository;
+        this.supplierRepository = supplierRepository;
     }
 
     @Override
     @Transactional
     public void run(String... args) {
-        log.info("Checking ShelfIQ initial setup...");
+        log.info("Checking ShelfIQ initial setup (zero seed data mode)...");
 
-        // 1. System Roles
+        // 1. Purge any residual demo/seed data from previous runs
+        saleItemRepository.deleteAll();
+        saleTransactionRepository.deleteAll();
+        purchaseOrderRepository.deleteAll();
+        inventoryMovementRepository.deleteAll();
+        inventoryRepository.deleteAll();
+        productRepository.deleteAll();
+        supplierRepository.deleteAll();
+
+        // 2. System Roles
         Role ownerRole = roleRepository.findByName("ROLE_STORE_OWNER")
                 .orElseGet(() -> roleRepository.save(new Role("ROLE_STORE_OWNER")));
         Role employeeRole = roleRepository.findByName("ROLE_EMPLOYEE")
@@ -59,7 +96,7 @@ public class DataInitializer implements CommandLineRunner {
         Role adminRole = roleRepository.findByName("ROLE_ADMIN")
                 .orElseGet(() -> roleRepository.save(new Role("ROLE_ADMIN")));
 
-        // 2. Master Categories
+        // 3. Master Categories
         categoryService.seedDefaultMasterCategories();
 
         // 3. Initial Store and Account setup if fresh database (0 products, 0 inventory, 0 transactions)

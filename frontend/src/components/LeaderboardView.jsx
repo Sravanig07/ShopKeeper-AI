@@ -498,12 +498,13 @@ export default function LeaderboardView({ showToast }) {
         </div>
       ) : (
         <>
-          {/* Top 3 Podium (Gold, Silver, Bronze) */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
-            {topThree.map((item, idx) => {
-              const medal = getMedalColor(item.rank);
-              return (
-                <div key={item.id} className="stagger-item" style={{ '--stagger-index': 3 + idx }}>
+          {/* Top 3 Podium (Gold, Silver, Bronze) - Rendered only when sales exist */}
+          {topThree.length > 0 ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+              {topThree.map((item, idx) => {
+                const medal = getMedalColor(item.rank);
+                return (
+                  <div key={item.id} className="stagger-item" style={{ '--stagger-index': 3 + idx }}>
                   <TiltCard maxTilt={8} scale={1.025}>
                     <div
                       className="card glass-hover-card"
@@ -600,47 +601,56 @@ export default function LeaderboardView({ showToast }) {
               );
             })}
           </div>
+        ) : null}
 
-          {/* Full Territory Rankings Table */}
-          <div className="card stagger-item" style={{ '--stagger-index': 6, padding: 0 }}>
-            <div className="card-header" style={{ padding: '20px 26px', borderBottom: '1px solid rgba(226, 232, 240, 0.8)', margin: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Layers size={20} color="#4f46e5" />
-                <div>
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800 }}>
-                    {activeGroup?.geoName} — {type === 'ITEM' ? 'Top Selling Items' : 'Top Performing Categories'}
-                  </h3>
-                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                    Ranked by cumulative POS checkout receipts and distributor reorder velocity
-                  </span>
-                </div>
+        {/* Full Territory Rankings Table */}
+        <div className="card stagger-item" style={{ '--stagger-index': 6, padding: 0 }}>
+          <div className="card-header" style={{ padding: '20px 26px', borderBottom: '1px solid rgba(226, 232, 240, 0.8)', margin: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Layers size={20} color="#4f46e5" />
+              <div>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 800 }}>
+                  {activeGroup?.geoName} — {type === 'ITEM' ? 'Top Selling Items' : 'Top Performing Categories'}
+                </h3>
+                <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                  Ranked by cumulative POS checkout receipts and store transaction velocity
+                </span>
               </div>
-              <span className="badge badge-info" style={{ fontSize: '0.8rem', padding: '6px 12px' }}>
-                {rankings.length} Positions Tracked
-              </span>
             </div>
+            <span className="badge badge-info" style={{ fontSize: '0.8rem', padding: '6px 12px' }}>
+              {rankings.length} Positions Tracked
+            </span>
+          </div>
 
-            <div className="table-wrapper" style={{ border: 'none' }}>
-              <table className="data-table">
-                <thead>
+          <div className="table-wrapper" style={{ border: 'none' }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th style={{ width: '70px', textAlign: 'center' }}>Rank</th>
+                  <th>{type === 'ITEM' ? 'Product & SKU' : 'Product Category'}</th>
+                  <th>Territory Hub</th>
+                  <th style={{ textAlign: 'center' }}>Units Sold</th>
+                  <th>Gross Revenue</th>
+                  <th style={{ width: '180px' }}>Market Share</th>
+                  <th style={{ textAlign: 'right' }}>Velocity Trend</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rankings.length === 0 ? (
                   <tr>
-                    <th style={{ width: '70px', textAlign: 'center' }}>Rank</th>
-                    <th>{type === 'ITEM' ? 'Product & SKU' : 'Product Category'}</th>
-                    <th>Territory Hub</th>
-                    <th style={{ textAlign: 'center' }}>Units Sold</th>
-                    <th>Gross Revenue</th>
-                    <th style={{ width: '180px' }}>Market Share</th>
-                    <th style={{ textAlign: 'right' }}>Velocity Trend</th>
+                    <td colSpan="7" style={{ textAlign: 'center', padding: '48px 24px', color: '#94a3b8' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                        <Trophy size={28} color="#cbd5e1" />
+                        <span style={{ fontWeight: 700, color: '#64748b', fontSize: '0.92rem' }}>
+                          No sales transactions recorded yet for {activeGroup?.geoName}
+                        </span>
+                        <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                          Complete your first POS checkout to compute live retail sales velocity!
+                        </span>
+                      </div>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {rankings.length === 0 ? (
-                    <tr>
-                      <td colSpan="7" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
-                        No sales recorded for this timeframe in {activeGroup?.geoName}. Complete your first POS transaction to seed the leaderboard!
-                      </td>
-                    </tr>
-                  ) : (
+                ) : (
                     rankings.map((it, idx) => {
                       return (
                         <tr key={it.id || idx} className="stagger-item hover-glass" style={{ '--stagger-index': Math.min(idx, 15) }}>

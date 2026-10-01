@@ -303,9 +303,9 @@ public class SaleService {
         long totalUnits = 0;
         BigDecimal totalRev = BigDecimal.ZERO;
 
-        if ("ITEM".equals(type)) {
-            // If current store location has actual sales, prioritize actual products
-            if (isCurrentStoreLocation && !actualProductUnits.isEmpty()) {
+        // Strictly rank real store sales - zero seed data
+        if (isCurrentStoreLocation) {
+            if ("ITEM".equals(type) && !actualProductUnits.isEmpty()) {
                 List<java.util.Map.Entry<Long, Long>> sorted = actualProductUnits.entrySet().stream()
                         .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
                         .toList();
@@ -313,6 +313,7 @@ public class SaleService {
                 int rank = 1;
                 for (java.util.Map.Entry<Long, Long> entry : sorted) {
                     Product p = productMap.get(entry.getKey());
+                    if (p == null) continue;
                     long units = entry.getValue();
                     BigDecimal rev = actualProductRev.getOrDefault(entry.getKey(), BigDecimal.ZERO);
                     totalUnits += units;
@@ -326,38 +327,12 @@ public class SaleService {
                             p.getSku(),
                             units,
                             rev,
-                            0.0, // calculated later
-                            +18.4,
+                            0.0,
+                            0.0,
                             geoName
                     ));
                 }
-            }
-
-            // Fill with retail benchmark items if fewer than 6
-            String[][] benchmarkItems = getBenchmarkItemsForGeo(geoName);
-            int startRank = rankings.size() + 1;
-            for (String[] it : benchmarkItems) {
-                if (rankings.size() >= 6) break;
-                long units = Long.parseLong(it[3]);
-                BigDecimal rev = new BigDecimal(it[4]);
-                totalUnits += units;
-                totalRev = totalRev.add(rev);
-
-                rankings.add(new LeaderboardResponseDto.RankedItemDto(
-                        startRank++,
-                        (long) (1000 + rankings.size()),
-                        it[0], // name
-                        it[1], // category
-                        it[2], // sku
-                        units,
-                        rev,
-                        0.0,
-                        Double.parseDouble(it[5]), // growth
-                        it[6] // dominant city
-                ));
-            }
-        } else { // CATEGORY
-            if (isCurrentStoreLocation && !actualCategoryUnits.isEmpty()) {
+            } else if ("CATEGORY".equals(type) && !actualCategoryUnits.isEmpty()) {
                 List<java.util.Map.Entry<String, Long>> sorted = actualCategoryUnits.entrySet().stream()
                         .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
                         .toList();
@@ -379,175 +354,23 @@ public class SaleService {
                             units,
                             rev,
                             0.0,
-                            +15.2,
+                            0.0,
                             geoName
                     ));
                 }
             }
-
-            // Benchmark categories
-            String[][] benchmarkCategories = getBenchmarkCategoriesForGeo(geoName);
-            int startRank = rankings.size() + 1;
-            for (String[] it : benchmarkCategories) {
-                if (rankings.size() >= 6) break;
-                long units = Long.parseLong(it[1]);
-                BigDecimal rev = new BigDecimal(it[2]);
-                totalUnits += units;
-                totalRev = totalRev.add(rev);
-
-                rankings.add(new LeaderboardResponseDto.RankedItemDto(
-                        startRank++,
-                        (long) (2000 + rankings.size()),
-                        it[0], // category name
-                        it[0],
-                        "CAT-" + it[0].toUpperCase().replace(" ", "-"),
-                        units,
-                        rev,
-                        0.0,
-                        Double.parseDouble(it[3]), // growth %
-                        it[4] // dominant city
-                ));
-            }
         }
 
         // Calculate market share percentages
-        final BigDecimal finalTotalRev = totalRev.compareTo(BigDecimal.ZERO) > 0 ? totalRev : BigDecimal.ONE;
-        for (LeaderboardResponseDto.RankedItemDto r : rankings) {
-            double share = r.getRevenue().multiply(BigDecimal.valueOf(100))
-                    .divide(finalTotalRev, 1, RoundingMode.HALF_UP).doubleValue();
-            r.setMarketSharePercentage(share);
+        if (totalRev.compareTo(BigDecimal.ZERO) > 0) {
+            for (LeaderboardResponseDto.RankedItemDto r : rankings) {
+                double share = r.getRevenue().multiply(BigDecimal.valueOf(100))
+                        .divide(totalRev, 1, RoundingMode.HALF_UP).doubleValue();
+                r.setMarketSharePercentage(share);
+            }
         }
 
         return new LeaderboardResponseDto.LeaderboardGroupDto(geoName, geoType, totalUnits, totalRev, rankings);
-    }
-
-    private String[][] getBenchmarkItemsForGeo(String geo) {
-        return switch (geo) {
-            case "Mumbai", "Maharashtra", "Pune" -> new String[][]{
-                    {"Amul Taaza Homogenised Milk 1L", "Dairy & Bread", "DRY-AML-1000", "420", "29400.00", "+22.5", "Mumbai"},
-                    {"Cadbury Dairy Milk Silk 150g", "Snacks & Munchies", "SNK-CAD-150", "310", "55800.00", "+18.2", "Pune"},
-                    {"Coca-Cola 500ml Pet Bottle", "Beverages & Cold Drinks", "BEV-COKE-500", "280", "11200.00", "+14.8", "Mumbai"},
-                    {"Parle-G Gold Biscuits 250g", "Snacks & Munchies", "SNK-PRL-250", "260", "7800.00", "+9.4", "Nagpur"},
-                    {"Tata Salt Vacuum Evaporated 1kg", "Staples & Grains", "STP-TTS-1000", "210", "5880.00", "+11.0", "Mumbai"},
-                    {"Surf Excel Easy Wash Detergent 1kg", "Household Supplies", "HSD-SRF-1000", "145", "20300.00", "+16.7", "Thane"}
-            };
-            case "Delhi NCR", "Delhi", "Haryana", "North India" -> new String[][]{
-                    {"Mother Dairy Full Cream Milk 1L", "Dairy & Bread", "DRY-MD-1000", "480", "33600.00", "+26.1", "New Delhi"},
-                    {"Lay's India's Magic Masala 50g", "Snacks & Munchies", "SNK-LYS-50", "390", "7800.00", "+21.4", "Gurugram"},
-                    {"Red Bull Energy Drink 250ml", "Beverages & Cold Drinks", "BEV-RBL-250", "270", "33750.00", "+28.9", "Noida"},
-                    {"Maggi 2-Minute Masala Noodles 280g", "Packaged Foods", "PKG-MAG-280", "340", "19040.00", "+15.3", "New Delhi"},
-                    {"Dettol Original Antiseptic Liquid 250ml", "Personal Care & Hygiene", "PC-DTL-250", "190", "24700.00", "+12.8", "Faridabad"},
-                    {"Fortune Sunlite Refined Sunflower Oil 1L", "Staples & Grains", "STP-FTN-1000", "165", "23100.00", "+10.5", "Ghaziabad"}
-            };
-            case "Hyderabad", "Telangana", "Andhra Pradesh" -> new String[][]{
-                    {"Heritage Daily Health Milk 1L", "Dairy & Bread", "DRY-HRT-1000", "380", "25840.00", "+19.7", "Hyderabad"},
-                    {"Thums Up Charged 500ml", "Beverages & Cold Drinks", "BEV-THM-500", "340", "13600.00", "+24.2", "Secunderabad"},
-                    {"Haldiram's All in One Mixture 200g", "Snacks & Munchies", "SNK-HLD-200", "240", "13200.00", "+14.6", "Hyderabad"},
-                    {"India Gate Basmati Rice Feast Rozzana 1kg", "Staples & Grains", "STP-IGB-1000", "175", "19250.00", "+16.8", "Vijayawada"},
-                    {"Priya Mango Pickle with Garlic 300g", "Packaged Foods", "PKG-PRY-300", "185", "12950.00", "+17.2", "Visakhapatnam"},
-                    {"Colgate Strong Teeth Toothpaste 200g", "Personal Care & Hygiene", "PC-CLG-200", "160", "18400.00", "+8.9", "Hyderabad"}
-            };
-            case "Tamil Nadu", "Chennai", "Puducherry" -> new String[][]{
-                    {"Aavin Green Magic Standardised Milk 1L", "Dairy & Bread", "DRY-AVN-1000", "440", "23760.00", "+21.8", "Chennai"},
-                    {"Bru Instant Coffee Powder 200g", "Beverages & Cold Drinks", "BEV-BRU-200", "290", "55100.00", "+25.4", "Coimbatore"},
-                    {"Sakthi Sambar Powder 200g", "Staples & Grains", "STP-SKT-200", "260", "15600.00", "+18.9", "Madurai"},
-                    {"Ponni Boiled Rice Delux 5kg", "Staples & Grains", "STP-PNI-5000", "180", "46800.00", "+14.2", "Tiruchirappalli"},
-                    {"Hamam Neem Tulsi Aloe Vera Soap 100g", "Personal Care & Hygiene", "PC-HMM-100", "220", "11000.00", "+12.1", "Salem"},
-                    {"Gold Winner Refined Sunflower Oil 1L", "Staples & Grains", "STP-GLD-1000", "175", "26250.00", "+16.5", "Chennai"}
-            };
-            case "Gujarat", "Ahmedabad" -> new String[][]{
-                    {"Amul Gold Full Cream Milk 1L", "Dairy & Bread", "DRY-AMG-1000", "470", "32900.00", "+24.6", "Ahmedabad"},
-                    {"Balaji Wafers Simply Salted 100g", "Snacks & Munchies", "SNK-BLJ-100", "360", "10800.00", "+27.3", "Rajkot"},
-                    {"Wagh Bakri Premium Leaf Tea 500g", "Beverages & Cold Drinks", "BEV-WB-500", "250", "35000.00", "+19.8", "Ahmedabad"},
-                    {"Fortune Cottonseed Filtered Oil 1L", "Staples & Grains", "STP-FTN-COT", "190", "28500.00", "+15.0", "Surat"},
-                    {"Vadilal Gourmet Ice Cream 1L", "Dairy & Bread", "DRY-VDL-1000", "160", "36800.00", "+22.1", "Vadodara"},
-                    {"Fogg Scent Xpressio Perfume 100ml", "Personal Care & Hygiene", "PC-FGG-100", "130", "39000.00", "+18.4", "Ahmedabad"}
-            };
-            case "Kerala", "Kochi" -> new String[][]{
-                    {"Milma Rich Cream Milk 1L", "Dairy & Bread", "DRY-MLM-1000", "410", "23780.00", "+20.1", "Kochi"},
-                    {"Kera Pure Coconut Cooking Oil 1L", "Staples & Grains", "STP-KRA-1000", "230", "57500.00", "+22.8", "Thiruvananthapuram"},
-                    {"Eastern Chicken Masala 100g", "Staples & Grains", "STP-EST-100", "270", "13500.00", "+19.4", "Kozhikode"},
-                    {"Nirapara Vadi Matta Rice 5kg", "Staples & Grains", "STP-NRP-5000", "150", "42000.00", "+16.7", "Thrissur"},
-                    {"Medimix Ayurvedic Classic Soap 125g", "Personal Care & Hygiene", "PC-MDM-125", "210", "10500.00", "+14.0", "Kochi"},
-                    {"Britannia Marie Gold Biscuits 300g", "Snacks & Munchies", "SNK-BRT-MAR", "240", "8400.00", "+11.5", "Kollam"}
-            };
-            case "Punjab", "Chandigarh" -> new String[][]{
-                    {"Verka Standard Pasteurized Milk 1L", "Dairy & Bread", "DRY-VRK-1000", "450", "29250.00", "+23.5", "Ludhiana"},
-                    {"Uncle Chipps Spicy Treat 50g", "Snacks & Munchies", "SNK-UNC-50", "330", "6600.00", "+20.8", "Chandigarh"},
-                    {"Catch Sprinklers Chaat Masala 100g", "Staples & Grains", "STP-CTC-100", "210", "14700.00", "+17.6", "Amritsar"},
-                    {"MDH Deggi Mirch Powder 100g", "Staples & Grains", "STP-MDH-100", "240", "21600.00", "+15.9", "Jalandhar"},
-                    {"Cremica Mixed Fruit Jam 500g", "Packaged Foods", "PKG-CRM-500", "160", "20800.00", "+18.2", "Ludhiana"},
-                    {"Surf Excel Matic Front Load 1kg", "Household Supplies", "HSD-SRF-MTC", "140", "32200.00", "+13.4", "Patiala"}
-            };
-            case "Uttar Pradesh", "Bihar", "Jharkhand", "Madhya Pradesh", "Chhattisgarh", "Central India", "Lucknow" -> new String[][]{
-                    {"Parle-G Original Glucose Biscuits 250g", "Snacks & Munchies", "SNK-PRL-250", "520", "15600.00", "+24.1", "Kanpur"},
-                    {"Ghadi Detergent Powder 1kg", "Household Supplies", "HSD-GHD-1000", "380", "26600.00", "+21.5", "Kanpur"},
-                    {"Fortune Kachi Ghani Pure Mustard Oil 1L", "Staples & Grains", "STP-FTN-MST", "290", "44950.00", "+25.8", "Varanasi"},
-                    {"Maggi 2-Minute Masala Noodles 280g", "Packaged Foods", "PKG-MAG-280", "320", "17920.00", "+18.2", "Lucknow"},
-                    {"Frooti Fresh 'N' Juicy Mango Drink 600ml", "Beverages & Cold Drinks", "BEV-FRT-600", "270", "10800.00", "+20.6", "Patna"},
-                    {"Dettol Original Soap 75g (Pack of 3)", "Personal Care & Hygiene", "PC-DTL-SOAP", "195", "21450.00", "+12.7", "Bhopal"}
-            };
-            case "West Bengal", "Odisha", "East India", "Kolkata" -> new String[][]{
-                    {"Mother Dairy Classic Cow Milk 1L", "Dairy & Bread", "DRY-MDC-1000", "460", "29900.00", "+23.1", "Kolkata"},
-                    {"Fortune Premium Kachi Ghani Mustard Oil 1L", "Staples & Grains", "STP-FTN-MST", "340", "52700.00", "+26.4", "Kolkata"},
-                    {"Tata Tea Premium Desh Ki Chai 500g", "Beverages & Cold Drinks", "BEV-TTA-500", "280", "36400.00", "+21.0", "Siliguri"},
-                    {"Bisk Farm Top Gold Marie Biscuits 300g", "Snacks & Munchies", "SNK-BSK-300", "310", "9300.00", "+17.5", "Bhubaneswar"},
-                    {"Boroline Antiseptic Ayurvedic Cream 40g", "Personal Care & Hygiene", "PC-BRL-40", "260", "11700.00", "+19.8", "Kolkata"},
-                    {"Dettol Original Liquid 250ml", "Personal Care & Hygiene", "PC-DTL-250", "180", "23400.00", "+14.3", "Cuttack"}
-            };
-            case "Rajasthan", "Jaipur" -> new String[][]{
-                    {"Saras Fresh Toned Milk 1L", "Dairy & Bread", "DRY-SRS-1000", "430", "23650.00", "+22.4", "Jaipur"},
-                    {"Bikaji Bhujia Asli Bikaneri 400g", "Snacks & Munchies", "SNK-BKJ-400", "340", "37400.00", "+25.9", "Bikaner"},
-                    {"Everest Super Garam Masala 100g", "Staples & Grains", "STP-EVR-100", "260", "22100.00", "+18.1", "Jodhpur"},
-                    {"Haldiram's Tins Gulab Jamun 1kg", "Packaged Foods", "PKG-HLD-GJ", "180", "39600.00", "+21.0", "Udaipur"},
-                    {"Tata Salt Vacuum Evaporated 1kg", "Staples & Grains", "STP-TTS-1000", "240", "6720.00", "+11.5", "Kota"},
-                    {"Nivea Soft Light Moisturiser 200ml", "Personal Care & Hygiene", "PC-NVA-200", "145", "37700.00", "+16.8", "Jaipur"}
-            };
-            case "Goa" -> new String[][]{
-                    {"Goa Dairy Pasteurised Toned Milk 1L", "Dairy & Bread", "DRY-GOA-1000", "390", "21450.00", "+18.5", "Panaji"},
-                    {"Cadbury Dairy Milk Silk Roasted Almond 150g", "Snacks & Munchies", "SNK-CAD-ALM", "280", "53200.00", "+22.1", "Margao"},
-                    {"Coca-Cola Zero Sugar 300ml Can", "Beverages & Cold Drinks", "BEV-COKE-ZR", "310", "12400.00", "+24.8", "Vasco da Gama"},
-                    {"Lay's Classic Salted Potato Chips 50g", "Snacks & Munchies", "SNK-LYS-CLS", "290", "5800.00", "+15.2", "Mapusa"},
-                    {"Red Bull Energy Drink 250ml", "Beverages & Cold Drinks", "BEV-RBL-250", "230", "28750.00", "+29.4", "Panaji"},
-                    {"Dettol Aloe Vera Liquid Handwash 200ml", "Personal Care & Hygiene", "PC-DTL-ALW", "150", "14850.00", "+12.0", "Ponda"}
-            };
-            case "Himachal Pradesh", "Uttarakhand", "Jammu and Kashmir", "Ladakh" -> new String[][]{
-                    {"Verka Fresh Homogenised Milk 1L", "Dairy & Bread", "DRY-VRK-1000", "380", "24700.00", "+19.2", "Shimla"},
-                    {"Dabur 100% Pure Squeezy Honey 500g", "Packaged Foods", "PKG-DBR-500", "240", "48000.00", "+26.7", "Dehradun"},
-                    {"Maggi Hot & Sweet Tomato Chilli Sauce 500g", "Packaged Foods", "PKG-MAG-SAU", "210", "29400.00", "+18.3", "Haridwar"},
-                    {"Red Bull Energy Drink 250ml", "Beverages & Cold Drinks", "BEV-RBL-250", "200", "25000.00", "+27.1", "Srinagar"},
-                    {"Patanjali Dant Kanti Natural Toothpaste 200g", "Personal Care & Hygiene", "PC-PTN-200", "220", "24200.00", "+14.6", "Rishikesh"},
-                    {"Vaseline Intensive Care Deep Moisture 400ml", "Personal Care & Hygiene", "PC-VSL-400", "170", "47600.00", "+21.5", "Jammu"}
-            };
-            case "Assam", "Arunachal Pradesh", "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Sikkim", "Tripura", "North-East India" -> new String[][]{
-                    {"Tata Tea Gold Premium Assam Blend 500g", "Beverages & Cold Drinks", "BEV-TTG-500", "360", "54000.00", "+27.4", "Guwahati"},
-                    {"Wai Wai Quick Masala Ready-to-Eat Noodles 70g", "Packaged Foods", "PKG-WAI-70", "410", "10250.00", "+28.2", "Shillong"},
-                    {"Amul Taaza Long-Life Toned Milk 1L", "Dairy & Bread", "DRY-AML-1000", "310", "21700.00", "+17.9", "Dimapur"},
-                    {"Britannia Good Day Cashew Cookies 200g", "Snacks & Munchies", "SNK-BRT-CSH", "260", "9100.00", "+14.5", "Agartala"},
-                    {"Fortune Kachi Ghani Mustard Oil 1L", "Staples & Grains", "STP-FTN-MST", "220", "34100.00", "+19.0", "Aizawl"},
-                    {"Lifebuoy Total Germ Protection Soap 125g", "Personal Care & Hygiene", "PC-LFB-125", "230", "9200.00", "+11.8", "Imphal"}
-            };
-            default -> new String[][]{ // Bengaluru, Karnataka, South India default
-                    {"Nandini Toned Fresh Milk 1L", "Dairy & Bread", "DRY-NAN-1000", "490", "24500.00", "+25.4", "Bengaluru"},
-                    {"Coca-Cola 500ml Pet Bottle", "Beverages & Cold Drinks", "BEV-COKE-500", "360", "14400.00", "+21.2", "Bengaluru"},
-                    {"Aashirvaad Shudh Chakki Atta 5kg", "Staples & Grains", "STP-ASH-5000", "180", "49500.00", "+17.6", "Mysuru"},
-                    {"Britannia Good Day Butter Cookies 200g", "Snacks & Munchies", "SNK-BRT-200", "295", "10325.00", "+14.1", "Bengaluru"},
-                    {"Red Bull Energy Drink 250ml", "Beverages & Cold Drinks", "BEV-RBL-250", "210", "26250.00", "+31.0", "Bengaluru"},
-                    {"Dettol Original Liquid Handwash 200ml", "Personal Care & Hygiene", "PC-DTL-200", "165", "16335.00", "+13.8", "Hubballi"}
-            };
-        };
-    }
-
-    private String[][] getBenchmarkCategoriesForGeo(String geo) {
-        return new String[][]{
-                {"Beverages & Cold Drinks", "1420", "98400.00", "+23.8", geo},
-                {"Snacks & Munchies", "1280", "74600.00", "+19.4", geo},
-                {"Dairy & Bread", "1190", "68500.00", "+16.2", geo},
-                {"Staples & Grains", "840", "112400.00", "+14.7", geo},
-                {"Packaged Foods", "720", "52800.00", "+11.9", geo},
-                {"Personal Care & Hygiene", "580", "64200.00", "+15.3", geo},
-                {"Household Supplies", "460", "47900.00", "+8.5", geo}
-        };
     }
 
     private SaleResponseDto toResponseDto(SaleTransaction txn) {
